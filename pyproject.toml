@@ -1,0 +1,22 @@
+[project]
+name = "gesture-oak"
+version = "0.1.0"
+description = "OAK-D camera gesture recognition application"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "depthai>=2.24.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.26.0",
+    "mediapipe>=0.10.0",
+]
+
+[project.scripts]
+gesture-oak = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gesture_oak"]
