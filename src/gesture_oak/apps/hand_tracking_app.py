@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import cv2
+cv2.setUseOptimized(True)
+cv2.setNumThreads(0)  # let OpenCV choose best for this process
 import numpy as np
 from ..detection.hand_detector import HandDetector
 from ..detection.swipe_detector import SwipeDetector
