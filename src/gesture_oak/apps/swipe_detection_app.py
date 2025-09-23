@@ -2,13 +2,13 @@
 from __future__ import annotations
 import cv2
 import time
-from typing import Optional
+from typing import Any, Iterable, Optional, Tuple
 
 cv2.setUseOptimized(True)
 cv2.setNumThreads(0)
 
 from gesture_oak.detection.swipe_detector import SwipeDetector
-from gesture_oak.detection.hand_detector import HandDetector  # your existing pipeline
+from gesture_oak.detection.hand_detector import HandDetector
 
 PRESETS = {
     "strict": dict(min_confidence=0.75, min_distance_px=120, max_y_deviation_px=36,
@@ -19,16 +19,52 @@ PRESETS = {
                    max_duration_ms=750,  min_consistent_dir_ratio=0.72, min_avg_vx_px_per_ms=0.45),
 }
 
-def _now_ms():
+def _now_ms() -> int:
     return int(time.time() * 1000)
+
+def _first_not_none(*vals):
+    for v in vals:
+        if v is not None:
+            return v
+    return None
+
+def _extract_frame_hands(ret: Any) -> Tuple[Optional[Any], Optional[Iterable]]:
+    if ret is None:
+        return None, None
+
+    if isinstance(ret, (tuple, list)):
+        if len(ret) >= 2:
+            return ret[0], ret[1]
+        elif len(ret) == 1:
+            return ret[0], None
+        else:
+            return None, None
+
+    if isinstance(ret, dict):
+        frame = _first_not_none(ret.get("frame"), ret.get("rgb"), ret.get("image"))
+        hands = ret.get("hands")
+        return frame, hands
+
+    frame = None
+    hands = None
+    for name in ("frame", "rgb", "image"):
+        if hasattr(ret, name):
+            frame = getattr(ret, name)
+            break
+    if hasattr(ret, "hands"):
+        hands = getattr(ret, "hands")
+
+    return frame, hands
 
 def draw_overlays(frame, hands, fps: float, swipe_count: int, mode_label: str):
     hud = f"FPS:{fps:.1f}  Swipes:{swipe_count}  Mode:{mode_label}"
     cv2.putText(frame, hud, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-    for hand in hands:
-        if hasattr(hand, "center"):
-            cx, cy = map(int, hand.center)
-            cv2.circle(frame, (cx, cy), 4, (0, 200, 255), 2)
+    if hands:
+        for hand in hands:
+            center = getattr(hand, "center", None)
+            if center:
+                cx, cy = map(int, center)
+                cv2.circle(frame, (cx, cy), 4, (0, 200, 255), 2)
 
 def run():
     print("\n--- Swipe Detection Application ---")
@@ -43,8 +79,6 @@ def run():
     print("  '3' - Loose mode (検出しやすい)\n")
 
     det = HandDetector()
-    det.start()
-
     detector = SwipeDetector()
     detector.set_params(**PRESETS["normal"])
     mode = "Normal"
@@ -57,28 +91,54 @@ def run():
 
     try:
         while True:
-            frame, hands = det.get_frame_and_hands()
+            # Flexible detector call
+            ret = None
+            try:
+                if hasattr(det, "get_frame_and_hands"):
+                    ret = det.get_frame_and_hands()
+                elif hasattr(det, "get"):
+                    ret = det.get()
+                elif hasattr(det, "next"):
+                    ret = det.next()
+                elif hasattr(det, "read"):
+                    ret = det.read()
+                else:
+                    ret = det()
+            except Exception:
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+                continue
+
+            frame, hands = _extract_frame_hands(ret)
             if frame is None:
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
                 continue
 
             frame_id += 1
             if frame_id % 10 == 0:
                 t_now = time.time()
-                fps = 10.0 / max(1e-6, (t_now - t_last))
+                elapsed = t_now - t_last
+                if elapsed > 1e-6:
+                    fps = 10.0 / elapsed
                 t_last = t_now
 
             ts = _now_ms()
-            for hand in hands or []:
-                if getattr(hand, "center", None) is None:
-                    continue
-                if detector.update(
-                    hand.center,
-                    ts_ms=ts,
-                    hand_conf=float(getattr(hand, "confidence", 1.0)),
-                    hand_depth_m=getattr(hand, "depth_m", None),
-                ):
-                    swipe_count += 1
-                    cv2.putText(frame, "SWIPE!", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 2, cv2.LINE_AA)
+            if hands:
+                for hand in hands:
+                    center = getattr(hand, "center", None)
+                    if not center:
+                        continue
+                    if detector.update(
+                        center,
+                        ts_ms=ts,
+                        hand_conf=float(getattr(hand, "confidence", 1.0)),
+                        hand_depth_m=getattr(hand, "depth_m", None),
+                    ):
+                        swipe_count += 1
+                        cv2.putText(frame, "SWIPE!", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 2, cv2.LINE_AA)
 
             if (frame_id % draw_every) == 0:
                 draw_overlays(frame, hands or [], fps, swipe_count, mode)
@@ -91,6 +151,7 @@ def run():
             elif key == ord('s'):
                 cv2.imwrite(f"swipe_{int(time.time())}.png", frame)
             elif key == ord('r'):
+                detector.reset_stats()
                 swipe_count = 0
             elif key == ord('1'):
                 mode = "Strict"
@@ -103,6 +164,11 @@ def run():
                 detector.set_params(**PRESETS["loose"])
 
     finally:
-        det.stop()
         cv2.destroyAllWindows()
         print("\nSwipe detection demo completed.")
+
+def main():
+    run()
+
+if __name__ == "__main__":
+    run()

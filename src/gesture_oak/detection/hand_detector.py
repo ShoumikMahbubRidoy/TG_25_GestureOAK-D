@@ -121,6 +121,7 @@ class HandDetector:
         print("Setting up palm detection neural network...")
         pd_nn = pipeline.create(dai.node.NeuralNetwork)
         pd_nn.setBlobPath(self.pd_model)
+        pd_nn.setNumInferenceThreads(2)
         pre_pd_manip.out.link(pd_nn.input)
         
         # Palm detection post processing
@@ -144,7 +145,7 @@ class HandDetector:
         print("Setting up hand landmark neural network...")
         lm_nn = pipeline.create(dai.node.NeuralNetwork)
         lm_nn.setBlobPath(self.lm_model)
-        lm_nn.setNumInferenceThreads(1)
+        lm_nn.setNumInferenceThreads(2)
         pre_lm_manip.out.link(lm_nn.input)
         lm_nn.out.link(manager_script.inputs['from_lm_nn'])
         
@@ -196,9 +197,9 @@ class HandDetector:
             print(f"USB Speed: {self.device.getUsbSpeed()}")
             
             # Setup output queues
-            self.q_video = self.device.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
-            self.q_manager_out = self.device.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
-            self.q_depth = self.device.getOutputQueue(name="depth_out", maxSize=1, blocking=False)
+            self.q_video = self.device.getOutputQueue(name="cam_out", maxSize=4, blocking=False)
+            self.q_manager_out = self.device.getOutputQueue(name="manager_out", maxSize=4, blocking=False)
+            self.q_depth = self.device.getOutputQueue(name="depth_out", maxSize=4, blocking=False)
             
             return True
             
