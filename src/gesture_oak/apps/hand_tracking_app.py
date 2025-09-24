@@ -1,4 +1,3 @@
-# src/gesture_oak/apps/hand_tracking_app.py
 #!/usr/bin/env python3
 
 import cv2
@@ -7,72 +6,45 @@ cv2.setNumThreads(0)  # let OpenCV choose best for this process
 import numpy as np
 from ..detection.hand_detector import HandDetector
 from ..detection.swipe_detector import SwipeDetector
-from ..utils import mediapipe_utils as mpu
-from ..logic.gesture_classifier import classify_many  # NEW
+from ..logic.gesture_classifier import classify_hand  # NEW
 
-def draw_hand_landmarks(frame, hand, cls=None):
-    """
-    Draw hand landmarks, bounding box, label/confidence/depth,
-    and (NEW) gesture + fingers-up list if provided.
-    """
-    # Draw landmarks
+def draw_hand_landmarks(frame, hand, gesture_info=None):
+    """Draw hand landmarks, bbox, labels, and (NEW) gesture info"""
+    # Landmarks
     if hasattr(hand, 'landmarks') and hand.landmarks is not None:
         for idx, landmark in enumerate(hand.landmarks):
             x, y = int(landmark[0]), int(landmark[1])
-            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
-            if idx in [0, 4, 8, 12, 16, 20]:  # Fingertips and wrist
-                cv2.circle(frame, (x, y), 5, (255, 0, 0), -1)
+            cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
+            if idx in [0, 4, 8, 12, 16, 20]:
+                cv2.circle(frame, (x, y), 3, (255, 0, 0), -1)
 
-    # Draw bounding box
+    # BBox
     if hasattr(hand, 'rect_points') and hand.rect_points is not None:
         points = np.array(hand.rect_points, dtype=np.int32)
         cv2.polylines(frame, [points], True, (0, 255, 255), 2)
 
-    # Draw label and confidence with depth info
+    # Label/conf/depth
     if hasattr(hand, 'label') and hasattr(hand, 'lm_score'):
         depth_info = ""
         if hasattr(hand, 'depth'):
             depth_info = f" D:{hand.depth:.0f}mm"
         if hasattr(hand, 'depth_confidence'):
             depth_info += f" C:{hand.depth_confidence:.2f}"
-
         label_text = f"{hand.label}: {hand.lm_score:.2f}{depth_info}"
+
         if hasattr(hand, 'rect_x_center_a'):
-            x = int(hand.rect_x_center_a - hand.rect_w_a//2)
-            y = int(hand.rect_y_center_a - hand.rect_h_a//2 - 10)
-            cv2.putText(frame, label_text, (x, y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+            x = int(hand.rect_x_center_a - hand.rect_w_a // 2)
+            y = int(hand.rect_y_center_a - hand.rect_h_a // 2 - 10)
+            cv2.putText(frame, label_text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
 
-    # Draw gesture (previous feature) OR new richer gesture info if cls provided
-    if hasattr(hand, 'rect_x_center_a'):
-        gx = int(hand.rect_x_center_a - hand.rect_w_a//2)
-        gy = int(hand.rect_y_center_a + hand.rect_h_a//2 + 20)
-
-        # If you already have hand.gesture, show it (compat).
-        base_gesture = None
-        if hasattr(hand, 'gesture') and hand.gesture is not None:
-            base_gesture = f"Gesture: {hand.gesture}"
-
-        if cls is not None:
-            # New overlay: gesture + fingers up list (multi-hand ready)
-            txt1 = f"Gesture: {cls.get('gesture','unknown')}"
-            cv2.putText(frame, txt1, (gx, gy),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            gy += 20
-            up = ','.join(cls.get('fingers_up_list', [])) or '-'
-            txt2 = f"Fingers: {up}"
-            cv2.putText(frame, txt2, (gx, gy),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 2)
-            # If you want the legacy gesture text too, show it below:
-            if base_gesture:
-                gy += 20
-                cv2.putText(frame, base_gesture, (gx, gy),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 220, 255), 1)
-        else:
-            # No classifier info supplied -> keep legacy behavior
-            if base_gesture:
-                cv2.putText(frame, base_gesture, (gx, gy),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+    # (NEW) Gesture text block
+    if gesture_info and hasattr(hand, 'rect_x_center_a'):
+        gx = int(hand.rect_x_center_a - hand.rect_w_a // 2)
+        gy = int(hand.rect_y_center_a + hand.rect_h_a // 2 + 20)
+        gesture_line = f"Gesture: {gesture_info['gesture']}"
+        fingers_line = "Up: " + ",".join(gesture_info["fingers_up_list"]) if gesture_info["fingers_up_list"] else "Up: none"
+        cv2.putText(frame, gesture_line, (gx, gy), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(frame, fingers_line, (gx, gy + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 2)
 
 def main():
     print("OAK-D Hand Detection Demo with Swipe Detection")
@@ -81,16 +53,16 @@ def main():
     print("Press 's' to save current frame")
     print("Press 'r' to reset swipe statistics")
 
-    # Initialize hand detector (keep your original config)
+    # Detector (same defaults you used for IR; leave use_rgb=False if you want IR path)
     detector = HandDetector(
         fps=30,
         resolution=(640, 480),
-        pd_score_thresh=0.1,  # Very low for IR detection
+        pd_score_thresh=0.1,
         use_gesture=True,
-        use_rgb=False  # Force IR camera for dark environments
+        use_rgb=False
     )
 
-    # Initialize swipe detector (keep your original relaxed params)
+    # Swipe detector (your relaxed params; UDP is still fired inside SwipeDetector on confirm)
     swipe_detector = SwipeDetector(
         buffer_size=12,
         min_distance=80,
@@ -101,7 +73,6 @@ def main():
         max_y_deviation=0.5
     )
 
-    # Connect to device
     if not detector.connect():
         print("Failed to connect to OAK-D device")
         return
@@ -113,59 +84,50 @@ def main():
 
     try:
         while True:
-            # Get frame, depth, and hand detections
             frame, hands, depth_frame = detector.get_frame_and_hands()
             if frame is None:
                 continue
 
             frame_count += 1
 
-            # NEW: classify every detected hand (multi-hand ready)
-            classes = classify_many(hands)
-
-            # スワイプ検出用の手の中心位置を取得 (first hand center)
+            # Choose a hand center for swipe detection (first hand)
             hand_center = None
             if hands:
-                hand0 = hands[0]
-                if hasattr(hand0, 'rect_x_center_a') and hasattr(hand0, 'rect_y_center_a'):
-                    hand_center = (hand0.rect_x_center_a, hand0.rect_y_center_a)
+                h0 = hands[0]
+                if hasattr(h0, 'rect_x_center_a') and hasattr(h0, 'rect_y_center_a'):
+                    hand_center = (h0.rect_x_center_a, h0.rect_y_center_a)
 
-            # Swipe detection update (unchanged)
             swipe_detected = swipe_detector.update(hand_center)
 
-            # Draw FPS
+            # FPS
             fps = detector.fps_counter.get()
-            cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            # Draw number of detected hands and depth status
-            cv2.putText(frame, f"Hands: {len(hands)}", (10, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            depth_status = "Depth: ON" if depth_frame is not None else "Depth: OFF"
-            cv2.putText(frame, depth_status, (10, 450),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+            # Counts, depth status
+            cv2.putText(frame, f"Hands: {len(hands)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(frame, "Depth: ON" if depth_frame is not None else "Depth: OFF",
+                        (10, 450), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                         (0, 255, 0) if depth_frame is not None else (0, 0, 255), 2)
 
-            # Show detection tips when no hands are detected (unchanged)
+            # Tips when empty
             if len(hands) == 0:
                 cv2.putText(frame, "IR Mode: Move hand slowly in front of camera",
-                            (frame.shape[1]//2 - 220, frame.shape[0]//2),
+                            (frame.shape[1] // 2 - 220, frame.shape[0] // 2),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-                cv2.putText(frame, "Works best in dark environments (30-150cm)",
-                            (frame.shape[1]//2 - 200, frame.shape[0]//2 + 30),
+                cv2.putText(frame, "Works best in dark environments (80-160 cm)",
+                            (frame.shape[1] // 2 - 220, frame.shape[0] // 2 + 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-            # スワイプ統計表示 (unchanged)
+            # Swipe stats
             stats = swipe_detector.get_statistics()
             cv2.putText(frame, f"Swipes: {stats['total_swipes_detected']}", (10, 90),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            # スワイプ進行状況表示（詳細） (unchanged)
+            # Swipe progress
             progress = swipe_detector.get_current_swipe_progress()
             if progress:
                 state_color = (0, 255, 255) if progress['state'] != 'idle' else (128, 128, 128)
-                cv2.putText(frame, f"State: {progress['state']}", (10, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
+                cv2.putText(frame, f"State: {progress['state']}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
                 if progress['distance'] > 0:
                     cv2.putText(frame, f"Distance: {progress['distance']:.0f}px (need: 80px)", (10, 150),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, state_color, 2)
@@ -174,35 +136,39 @@ def main():
                     cv2.putText(frame, f"Progress: {progress['progress']:.1%}", (10, 210),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
 
-            # スワイプ検出時の視覚的フィードバック (unchanged)
+            # Swipe visual feedback
             if swipe_detected:
                 last_swipe_alert = frame_count
                 print(f"🚀 LEFT-TO-RIGHT SWIPE DETECTED! (Total: {stats['total_swipes_detected']})")
 
-            # スワイプアラート表示（3秒間） (unchanged)
-            if frame_count - last_swipe_alert < 90:  # 30fps * 3sec
-                cv2.putText(frame, "SWIPE DETECTED!", (frame.shape[1]//2 - 100, 50),
+            if frame_count - last_swipe_alert < 90:  # ~3s at 30fps
+                cv2.putText(frame, "SWIPE DETECTED!", (frame.shape[1] // 2 - 110, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
-                cv2.arrowedLine(frame, (frame.shape[1]//2 - 50, 80),
-                                (frame.shape[1]//2 + 50, 80), (0, 255, 0), 5)
+                cv2.arrowedLine(frame, (frame.shape[1] // 2 - 60, 80),
+                                (frame.shape[1] // 2 + 60, 80), (0, 255, 0), 5)
 
-            # Draw each detected hand (+ NEW classification overlay)
+            # Draw each hand + (NEW) classify & overlay gesture
             for i, hand in enumerate(hands):
-                cls = classes[i] if i < len(classes) else None
-                draw_hand_landmarks(frame, hand, cls=cls)
+                gesture_info = None
+                if hasattr(hand, "landmarks") and hand.landmarks is not None and len(hand.landmarks) == 21:
+                    try:
+                        # hand.handedness: >0.5 => 'right' per your extractor
+                        handedness = getattr(hand, "handedness", 0.5)
+                        gesture_info = classify_hand(np.asarray(hand.norm_landmarks if hasattr(hand, "norm_landmarks") else hand.landmarks),
+                                                     handedness=handedness)
+                        # Attach for other consumers if needed
+                        hand.gesture = gesture_info["gesture"]
+                        hand.fingers_up = gesture_info["fingers_up"]
+                    except Exception:
+                        gesture_info = None
 
-                # Print hand info every 2 frames (unchanged)
-                if frame_count % 2 == 0:
-                    print(f"Hand {i+1}: {hand.label} (confidence: {getattr(hand,'lm_score',0.0):.3f})")
-                    if hasattr(hand, 'gesture') and hand.gesture:
-                        print(f"  Gesture(detector): {hand.gesture}")
-                    if cls is not None:
-                        print(f"  Classifier: {cls['gesture']} | up={cls['fingers_up_list']}")
+                draw_hand_landmarks(frame, hand, gesture_info)
+                # Optional debug log every few frames
+                # if i == 0 and (frame_count % 15 == 0) and gesture_info:
+                #     print(f"[Hand {i+1}] {gesture_info}")
 
-            # Display frame (unchanged)
-            cv2.imshow("OAK-D Hand Detection with Swipe", frame)
+            cv2.imshow("OAK-D Hand Detection with Swipe + Gestures", frame)
 
-            # Handle key presses (unchanged)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
@@ -216,16 +182,12 @@ def main():
 
     except KeyboardInterrupt:
         print("\nInterrupted by user")
-
     except Exception as e:
         print(f"Error during execution: {e}")
-
     finally:
-        # Cleanup (unchanged)
         detector.close()
         cv2.destroyAllWindows()
 
-        # Print final statistics (unchanged)
         total_fps = detector.fps_counter.get_global()
         final_stats = swipe_detector.get_statistics()
         print(f"\nSession Statistics:")
@@ -234,7 +196,6 @@ def main():
         print(f"Total swipes detected: {final_stats['total_swipes_detected']}")
         print(f"False positives filtered: {final_stats['false_positives_filtered']}")
         print("Hand detection demo completed.")
-
 
 if __name__ == "__main__":
     main()
