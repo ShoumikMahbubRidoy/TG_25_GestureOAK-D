@@ -1,159 +1,144 @@
 # src/gesture_oak/logic/gesture_classifier.py
 from __future__ import annotations
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Any, Optional
 import numpy as np
 
-# Landmark indices follow MediaPipe topology (0..20)
-# Thumb: 1,2,3,4
-# Index: 5,6,7,8
-# Middle: 9,10,11,12
-# Ring: 13,14,15,16
-# Pinky: 17,18,19,20
-FINGER_GROUPS = {
-    "thumb":  [1, 2, 3, 4],
-    "index":  [5, 6, 7, 8],
-    "middle": [9, 10, 11, 12],
-    "ring":   [13, 14, 15, 16],
-    "pinky":  [17, 18, 19, 20],
+# MediaPipe indices (your detector follows this convention)
+WRIST = 0
+THUMB_CMC, THUMB_MCP, THUMB_IP, THUMB_TIP = 1, 2, 3, 4
+INDEX_MCP, INDEX_PIP, INDEX_DIP, INDEX_TIP = 5, 6, 7, 8
+MIDDLE_MCP, MIDDLE_PIP, MIDDLE_DIP, MIDDLE_TIP = 9, 10, 11, 12
+RING_MCP, RING_PIP, RING_DIP, RING_TIP = 13, 14, 15, 16
+PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP = 17, 18, 19, 20
+
+FINGER_TIPS = {
+    "thumb": THUMB_TIP,
+    "index": INDEX_TIP,
+    "middle": MIDDLE_TIP,
+    "ring": RING_TIP,
+    "pinky": PINKY_TIP,
 }
-ORDER = ["thumb", "index", "middle", "ring", "pinky"]
+FINGER_PIPS = {
+    "thumb": THUMB_IP,   # thumb has IP (no PIP)
+    "index": INDEX_PIP,
+    "middle": MIDDLE_PIP,
+    "ring": RING_PIP,
+    "pinky": PINKY_PIP,
+}
+FINGER_MCPS = {
+    "thumb": THUMB_MCP,
+    "index": INDEX_MCP,
+    "middle": MIDDLE_MCP,
+    "ring": RING_MCP,
+    "pinky": PINKY_MCP,
+}
+FINGER_ORDER = ["thumb", "index", "middle", "ring", "pinky"]
 
-def _rotate2d(points: np.ndarray, theta: float) -> np.ndarray:
-    """Rotate Nx2 points by theta (radians) around origin (wrist at 0,0)."""
-    c, s = math.cos(theta), math.sin(theta)
-    R = np.array([[c, -s], [s, c]], dtype=np.float32)
-    return (R @ points.T).T
 
-def _normalize_to_palm_frame(lms_xy: np.ndarray) -> Tuple[np.ndarray, float]:
+def _np(v) -> np.ndarray:
+    return np.asarray(v, dtype=float)
+
+def _dist(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.linalg.norm(a - b))
+
+def _angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     """
-    Translate wrist to (0,0), rotate so the line (index_mcp -> pinky_mcp) is horizontal.
-    Returns rotated points and the rotation angle.
+    Angle ABC in radians. a,b,c are 2D or 3D points.
     """
-    # Wrist=0, index_mcp=5, pinky_mcp=17
-    pts = lms_xy.copy().astype(np.float32)
-    wrist = pts[0]
-    pts -= wrist
-    base_v = pts[17] - pts[5]
-    theta = math.atan2(base_v[1], base_v[0])  # rotate by -theta later
-    rotated = _rotate2d(pts, -theta)
-    return rotated, theta
+    ab = _np(a) - _np(b)
+    cb = _np(c) - _np(b)
+    nab = np.linalg.norm(ab) + 1e-9
+    ncb = np.linalg.norm(cb) + 1e-9
+    cosang = np.clip(np.dot(ab, cb) / (nab * ncb), -1.0, 1.0)
+    return float(math.acos(cosang))
 
-def _finger_extended(rot: np.ndarray, finger: str, handedness: float) -> bool:
+def _choose_landmarks(hand) -> Optional[np.ndarray]:
     """
-    Extension test in palm frame (rotated).
-    For non-thumbs: tip y << pip y (negative is 'up' because image y-down, but we rotated to make base horizontal).
-    For thumb: use x spread and some y support, with handedness to decide direction.
-    handedness > 0.5 means 'right', <=0.5 means 'left' (your detector's convention).
+    Prefer normalized landmarks; fallback to pixel-space.
+    Return shape (21, 3).
     """
-    ids = FINGER_GROUPS[finger]
-    mcp, pip_, dip, tip = rot[ids[0]], rot[ids[1]], rot[ids[2]], rot[ids[3]]
+    if hasattr(hand, "norm_landmarks") and hand.norm_landmarks is not None:
+        arr = np.asarray(hand.norm_landmarks)
+        if arr.ndim == 2 and arr.shape[0] == 21:
+            if arr.shape[1] == 2:
+                arr = np.concatenate([arr, np.zeros((21, 1))], axis=1)
+            return arr
+    if hasattr(hand, "landmarks") and hand.landmarks is not None:
+        arr = np.asarray(hand.landmarks)
+        if arr.ndim == 2 and arr.shape[0] == 21:
+            if arr.shape[1] == 2:
+                arr = np.concatenate([arr, np.zeros((21, 1))], axis=1)
+            return arr
+    return None
 
-    # Scale-invariant thresholds using hand size ~ distance wrist->middle_mcp
-    hand_scale = max(30.0, np.linalg.norm(rot[9]))  # middle MCP distance from wrist
-    y_margin = 0.02 * hand_scale
-    x_margin = 0.02 * hand_scale
+def _is_thumb_extended(lm: np.ndarray) -> bool:
+    wrist = lm[WRIST]
+    tip   = lm[THUMB_TIP]
+    ip    = lm[THUMB_IP]
+    mcp   = lm[THUMB_MCP]
+    cmc   = lm[THUMB_CMC]
+    ang = _angle(cmc, mcp, tip)  # bigger ~ straighter
+    tip_w = _dist(tip, wrist)
+    ip_w  = _dist(ip, wrist)
+    return (ang > math.radians(35)) and (tip_w > ip_w * 1.07)
 
-    if finger == "thumb":
-        # For right hand, thumb extends toward +x; left hand toward -x (in rotated frame).
-        dir_sign = +1.0 if handedness > 0.5 else -1.0
-        x_spread = (tip[0] - mcp[0]) * dir_sign
-        y_support = abs(tip[1] - mcp[1])
-        return (x_spread > 0.20 * hand_scale) and (y_support < 0.45 * hand_scale)
-    else:
-        # Classic: tip above PIP & above MCP by some margin (remember rotated frame)
-        return (tip[1] < pip_[1] - y_margin) and (tip[1] < mcp[1] - y_margin) and (abs(tip[0] - mcp[0]) > x_margin)
+def _is_finger_extended(lm: np.ndarray, finger: str) -> bool:
+    wrist = lm[WRIST]
+    tip   = lm[FINGER_TIPS[finger]]
+    pip   = lm[FINGER_PIPS[finger]]
+    mcp   = lm[FINGER_MCPS[finger]]
+    tip_w = _dist(tip, wrist)
+    pip_w = _dist(pip, wrist)
+    dist_ok = tip_w > pip_w * 1.06
+    bend = _angle(mcp, pip, tip)
+    straight_ok = bend > math.radians(25)
+    return dist_ok and straight_ok
 
-def _count_fingers_up(rot: np.ndarray, handedness: float) -> Dict[str, bool]:
-    return {name: _finger_extended(rot, name, handedness) for name in ORDER}
+def classify_one(hand) -> Dict[str, Any]:
+    lm = _choose_landmarks(hand)
+    if lm is None:
+        return {
+            "fingers": {f: False for f in FINGER_ORDER},
+            "count": 0,
+            "gesture": "unknown",
+            "fingers_up_list": [],
+            "handedness": getattr(hand, "label", None),
+            "confidence": getattr(hand, "lm_score", None),
+        }
 
-def _gesture_from_pattern(flags: Dict[str, bool]) -> str:
-    # Map simple patterns to names
-    up = [f for f, on in flags.items() if on]
-    n = len(up)
-
-    if n == 0:
-        return "fist"
-    if n == 5:
-        return "open"
-
-    # Single-finger names
-    if n == 1:
-        return f"one-{up[0]}"
-
-    # Two fingers: check "peace" (index + middle)
-    if n == 2 and "index" in up and "middle" in up and "ring" not in up and "pinky" not in up:
-        return "peace"
-    if n == 2:
-        return f"two-{'-'.join(sorted(up))}"
-
-    if n == 3:
-        return "three"
-    if n == 4:
-        return "four"
-
-    return f"{n}-up"
-
-def _is_thumbs_up(rot: np.ndarray, handedness: float, flags: Dict[str, bool]) -> bool:
-    # Stronger thumbs-up: thumb extended, others mostly curled (<=2 non-thumbs up), and thumb above index MCP.
-    if not flags["thumb"]:
-        return False
-    non_thumb_up = sum(flags[f] for f in ["index", "middle", "ring", "pinky"])
-    if non_thumb_up > 1:
-        return False
-    thumb_tip = rot[4]
-    index_mcp = rot[5]
-    # In rotated frame, "up" == tip[1] < base[1]
-    return thumb_tip[1] < index_mcp[1] - 0.05 * max(30.0, np.linalg.norm(rot[9]))
-
-def _is_pinch(rot: np.ndarray) -> bool:
-    # Simple pinch: index tip close to thumb tip
-    thumb_tip = rot[4]
-    index_tip = rot[8]
-    dist = np.linalg.norm(index_tip - thumb_tip)
-    scale = max(30.0, np.linalg.norm(rot[9]))
-    return dist < 0.20 * scale  # ~20% of hand scale
-
-def classify_hand(
-    landmarks_xy: np.ndarray,
-    handedness: float,
-) -> Dict:
-    """
-    Inputs:
-      - landmarks_xy: (21,2) or (21,3) numpy array in image pixel space
-      - handedness:   float (your detector uses >0.5 => 'right', else 'left')
-    Returns:
-      {
-        'fingers_up': {'thumb':bool, ...},
-        'fingers_up_count': int,
-        'fingers_up_list': ['index','middle',...],
-        'gesture': 'fist'|'peace'|'open'|...,
-        'extras': {'thumbs_up':bool, 'pinch':bool}
-      }
-    """
-    if landmarks_xy.shape[1] == 3:
-        lms_xy = landmarks_xy[:, :2]
-    else:
-        lms_xy = landmarks_xy
-
-    rot, _ = _normalize_to_palm_frame(lms_xy)
-    flags = _count_fingers_up(rot, handedness)
-    gesture = _gesture_from_pattern(flags)
-
-    # Priority gestures override simple count
-    if _is_thumbs_up(rot, handedness, flags):
-        gesture = "thumbs_up"
-    elif _is_pinch(rot):
-        gesture = "pinch"
-
-    up_list = [f for f, on in flags.items() if on]
-    return {
-        "fingers_up": flags,
-        "fingers_up_count": len(up_list),
-        "fingers_up_list": up_list,
-        "gesture": gesture,
-        "extras": {
-            "thumbs_up": gesture == "thumbs_up",
-            "pinch": gesture == "pinch",
-        },
+    fingers = {
+        "thumb": _is_thumb_extended(lm),
+        "index": _is_finger_extended(lm, "index"),
+        "middle": _is_finger_extended(lm, "middle"),
+        "ring": _is_finger_extended(lm, "ring"),
+        "pinky": _is_finger_extended(lm, "pinky"),
     }
+    up = [f for f in FINGER_ORDER if fingers[f]]
+    count = len(up)
+
+    # simple set of names
+    if count == 0:
+        gesture = "fist"
+    elif count == 1:
+        gesture = f"one ({up[0]})"
+    elif count == 2:
+        gesture = "two (peace)" if set(up) == {"index", "middle"} else f"two ({'+'.join(up)})"
+    elif count == 3:
+        gesture = "three (index+middle+ring)" if set(up) == {"index", "middle", "ring"} else "three"
+    elif count == 4:
+        gesture = "four"
+    else:
+        gesture = "five (open palm)"
+
+    return {
+        "fingers": fingers,
+        "count": count,
+        "gesture": gesture,
+        "fingers_up_list": up,
+        "handedness": getattr(hand, "label", None),
+        "confidence": getattr(hand, "lm_score", None),
+    }
+
+def classify_many(hands: List[Any]) -> List[Dict[str, Any]]:
+    return [classify_one(h) for h in (hands or [])]
