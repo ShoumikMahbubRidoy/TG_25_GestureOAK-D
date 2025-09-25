@@ -12,7 +12,7 @@ class SimpleIRCamera:
     IRカメラからの画像取得用のシンプルなクラス
     MediaPipeの複雑さを排除して軽量化
     """
-    
+    1
     def __init__(self, fps=30, resolution=(640, 480)):
         self.fps_target = fps
         self.resolution = resolution
