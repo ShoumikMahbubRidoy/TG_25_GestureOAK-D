@@ -100,7 +100,7 @@ TG_25_GestureOAK-D/
 Get-ChildItem -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force; uv run python main.py
 ```
 
-Menu:
+**Menu:**
 ```markdown
 1. Test camera connection
 2. Run hand tracking app
