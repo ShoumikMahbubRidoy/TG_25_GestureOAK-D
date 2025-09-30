@@ -1,3 +1,6 @@
+# Python
+Python >= 3.12
+
 # Core device SDK
 depthai>=2.24.0.0
 
