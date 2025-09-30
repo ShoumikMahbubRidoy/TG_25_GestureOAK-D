@@ -112,26 +112,26 @@ Menu:
 ---
 
 ## Workflow ワークフロー
-- Choose 2/3 for hand tracking.
-- Place hand 80–160 cm from OAK-D camera.
-- Perform a left-to-right swipe.
-- Observe console logs and UDP packet output.
+- Choose 2/3 for hand tracking. 2 または 3 を選択して実行。
+- Place hand 80–160 cm from OAK-D camera. OAK-D カメラから 80〜160 cm の距離に手を置く
+- Perform a left-to-right swipe. 左から右へスワイプ を行う。
+- Observe console logs and UDP packet output. コンソールログとUDP送信を確認。
 
 ---
 
 ## 📈 Known Issues 既知の課題
-- Left hand less reliable beyond ~100 cm.
-- Background objects (cloth, hair, ear, etc.) may cause false positives.
-- FPS reporting bug: unrealistic values (>200k fps) are artifacts.
+- Left hand less reliable beyond ~100 cm. 左手は 100 cm 以上での検出が不安定。
+- Background objects (cloth, hair, ear, etc.) may cause false positives. 背景の布・髪・耳などが誤検出される可能性あり。
+- FPS reporting bug: unrealistic values (>200k fps) are artifacts. FPS表示にバグがあり、20万fps以上の非現実的値が出ることがある。
 
 ---
 
 ## 🗺️ Roadmap 今後のロードマップ
-- Finger-count gestures (1–5, peace, fist).
-- Multi-hand support.
-- Custom dataset training for robustness.
-- Integrate MediaPipe HandLandmarker.
-- Fix FPS counter (target 25–60 fps realistic).
+- Finger-count gestures (1–5, peace, fist). 指本数のジェスチャー認識（1〜5本、ピース、グー）。
+- Multi-hand support. 両手同時サポート。
+- Custom dataset training for robustness. 独自データセットでの学習による精度向上。
+- Integrate MediaPipe HandLandmarker. MediaPipe HandLandmarker との統合。
+- Fix FPS counter (target 25–60 fps realistic). FPSカウンタ修正（目標: 実測25〜60fps）。
 
 ---
 
