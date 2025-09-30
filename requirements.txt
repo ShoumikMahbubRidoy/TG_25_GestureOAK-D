@@ -1,0 +1,5 @@
+depthai>=2.24.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+imutils>=0.5.4
+pyyaml>=6.0
