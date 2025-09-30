@@ -97,7 +97,7 @@ TG_25_GestureOAK-D/
 
 ## 🚀 How to Run 実行方法
 ```bash
-uv run python main.py
+Get-ChildItem -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force; uv run python main.py
 ```
 
 Menu:
