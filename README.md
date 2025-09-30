@@ -43,20 +43,20 @@ See [`requirements.txt`](requirements.txt) for full list.
 
 ## 🛠️ Installation
 
-Clone:
+**Clone:**
 ```bash
 git clone https://github.com/ShoumikMahbubRidoy/TG_25_GestureOAK-D.git
 cd TG_25_GestureOAK-D
 ```
 
-Setup venv:
+**Setup venv:**
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Linux/Mac
 .venv\Scripts\Activate.ps1  # Windows
 ```
 
-Install deps:
+**Install deps:**
 ```bash
 pip install -r requirements.txt
 ```
