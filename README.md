@@ -1,35 +1,35 @@
 # TG_25_GestureOAK-D
 
-Real-time **hand detection** and **swipe gesture recognition** system built for the [Luxonis OAK-D-PRO](https://shop.luxonis.com/products/oak-d-pro).  
-Optimized for **80–160 cm operating distance**, with IR-based robustness and UDP integration.
+Real-time **hand detection** and **swipe gesture recognition** system built for the [Luxonis OAK-D-PRO](https://shop.luxonis.com/products/oak-d-pro).  リアルタイム **ハンド検出** と **スワイプジェスチャー認識** システム。  
+[Luxonis OAK-D-PRO](https://shop.luxonis.com/products/oak-d-pro) 用に構築。  
+Optimized for **80–160 cm operating distance**, with IR-based robustness and UDP integration. **80〜160 cm 動作距離** に最適化され、IR（赤外線）ベースで高い堅牢性とUDP連携を実現。
 
 ---
 
-## 📌 What is done?
-- **Hand Detection** using stereo IR cameras + depth filtering.  
-- **Swipe Detection** (left-to-right) with distance, velocity, and debounce logic.  
-- **UDP Messaging** on confirmed swipe to `192.168.10.10:6001`.  
-- **Performance Optimizations**: non-blocking queues, OpenCV runtime tuning.  
-- **Gesture Hooks (WIP)**: placeholders for finger-count and multi-hand classification.
+## 📌 What is done? 実装済み機能
+- **Hand Detection ハンド検出** using stereo IR cameras + depth filtering.  ステレオIRカメラ + 深度フィルタリング。  
+- **Swipe Detection スワイプ検出** (left-to-right) with distance, velocity, and debounce logic.  左→右の動きを距離・速度・デバウンスで判定。  
+- **UDP Messaging 送信** on confirmed swipe to `192.168.10.10:6001`.  スワイプ確定時に `192.168.10.10:6001` へ送信。 
+- **Performance Optimizations 性能最適化**: non-blocking queues, OpenCV runtime tuning.  ノンブロッキングキュー、OpenCV最適化。 
+- **Gesture Hooks (WIP) ジェスチャーフック (開発中)**: placeholders for finger-count and multi-hand classification. 指の本数カウント、両手対応の拡張。
 
 ---
 
-## 🤔 Why is this done?
-- Original depthai tracker struggled at **mid-range distances**.  
-- Needed **stable swipe events** to control robots.  
-- IR-based pipeline makes it usable in **dark or mixed-light environments**.  
+## 🤔 Why is this done? なぜ開発したか
+- Original depthai tracker struggled at **mid-range distances**.  既存の DepthAI トラッカーは **中距離検出に弱点** があった。
+- IR-based pipeline makes it usable in **dark or mixed-light environments**.  **暗所や混合光環境** でも動作可能にするため、IRベースで設計。 
 
 ---
 
-## ⚙️ How is this done?
-- **DepthAI Pipeline**: palm NN → postproc → landmark NN → IR-enhanced frames.  
-- **Swipe Detector**: buffered trajectory → min distance + velocity check.  
-- **Depth Filtering**: keeps stable hands in **300–2000 mm range**.  
-- **IR Enhancement**: CLAHE + bilateral filter for edge-preserving contrast.  
+## ⚙️ How is this done? 実現方法
+- **DepthAI Pipeline DepthAI パイプライン**: palm NN → postproc → landmark NN → IR-enhanced frames.  Palm NN → PostProc → Landmark NN → IR強調フレーム。  
+- **Swipe Detector スワイプ検出器**: buffered trajectory → min distance + velocity check.  バッファリングされた軌跡を距離・速度閾値で判定。  
+- **Depth Filtering 深度フィルタリング**: keeps stable hands in **300–2000 mm range**.  **300〜2000 mm** の範囲で安定した手だけを保持。
+- **IR Enhancement 強調処理**: CLAHE + bilateral filter for edge-preserving contrast.  CLAHE + バイラテラルフィルタで輪郭を保持しつつノイズ低減。  
 
 ---
 
-## 📦 Requirements
+## 📦 Requirements 必要環境
 - Python **3.10+**  
 - DepthAI SDK (`depthai`)  
 - OpenCV ≥ 4.8  
@@ -38,30 +38,33 @@ Optimized for **80–160 cm operating distance**, with IR-based robustness and U
 - PyYAML (optional config)
 
 See [`requirements.txt`](requirements.txt) for full list.
+詳細は [`requirements.txt`](requirements.txt) を参照。
+
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation インストール手順
 
-**Clone:**
+**Clone リポジトリ取得:**
 ```bash
 git clone https://github.com/ShoumikMahbubRidoy/TG_25_GestureOAK-D.git
 cd TG_25_GestureOAK-D
 ```
 
-**Setup venv:**
+**Setup venv 仮想環境作成:**
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Linux/Mac
 .venv\Scripts\Activate.ps1  # Windows
 ```
 
-**Install deps:**
+**Install deps 依存関係インストール:**
 ```bash
 pip install -r requirements.txt
 ```
+---
 
-## 📂 Directory Tree
+## 📂 Directory Tree ディレクトリ構造
 ```css
 TG_25_GestureOAK-D/
 ├── main.py
@@ -90,7 +93,9 @@ TG_25_GestureOAK-D/
 
 ```
 
-## 🚀 How to Run
+---
+
+## 🚀 How to Run 実行方法
 ```bash
 uv run python main.py
 ```
@@ -104,25 +109,33 @@ Menu:
 5. Exit
 ```
 
-## Workflow
+---
+
+## Workflow ワークフロー
 - Choose 2/3 for hand tracking.
 - Place hand 80–160 cm from OAK-D camera.
 - Perform a left-to-right swipe.
 - Observe console logs and UDP packet output.
 
-## 📈 Known Issues
+---
+
+## 📈 Known Issues 既知の課題
 - Left hand less reliable beyond ~100 cm.
 - Background objects (cloth, hair, ear, etc.) may cause false positives.
 - FPS reporting bug: unrealistic values (>200k fps) are artifacts.
 
-## 🗺️ Roadmap
+---
+
+## 🗺️ Roadmap 今後のロードマップ
 - Finger-count gestures (1–5, peace, fist).
 - Multi-hand support.
 - Custom dataset training for robustness.
 - Integrate MediaPipe HandLandmarker.
 - Fix FPS counter (target 25–60 fps realistic).
 
-## 📜 License
+---
+
+## 📜 License ライセンス
 **MIT**
 ```yaml
 
@@ -137,7 +150,4 @@ Menu:
 - Issues  
 - Roadmap  
 
-No parts are floating outside anymore.  
-
-Do you also want me to create the **new `requirements.txt`** (cleaned, with only exact deps you need) right now?
 ```
