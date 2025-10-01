@@ -1,54 +1,85 @@
-"""
-Lightweight FPS helper with robust global timing.
-
-- Instant FPS: over a short deque window (default 30 samples)
-- Global FPS: from the first update() call using a fixed start_time
-"""
+# src/gesture_oak/utils/FPS.py
 import time
-import cv2
 from collections import deque
 
 class FPS:
-    def __init__(self, average_of: int = 30):
-        self.timestamps = deque(maxlen=average_of)
-        self.nbf = 0
-        self.start_time = None
-        self._inst_fps = 0.0
+    """
+    Robust FPS tracker.
+    - Call start() once at the beginning.
+    - Call update() once per processed frame.
+    - stop() is optional; if not called, elapsed() uses 'now'.
+    Backward-compat shims: get() -> current FPS, get_global() -> average FPS.
+    """
 
-    def update(self):
+    def __init__(self, avg_window: int = 50):
+        self._times = deque(maxlen=avg_window)  # per-frame deltas
+        self._start_ts = None
+        self._first_update_ts = None
+        self._last_update_ts = None
+        self._stop_ts = None
+        self._frame_count = 0
+
+    def start(self):
         now = time.perf_counter()
-        if self.start_time is None:
-            self.start_time = now
-        self.timestamps.append(now)
-        self.nbf += 1
-        if len(self.timestamps) >= 2:
-            dt = self.timestamps[-1] - self.timestamps[0]
-            frames = len(self.timestamps) - 1
-            self._inst_fps = frames / dt if dt > 0 else 0.0
+        self._start_ts = now
+        self._first_update_ts = None
+        self._last_update_ts = None
+        self._stop_ts = None
+        self._frame_count = 0
+        self._times.clear()
+        return self
 
+    def stop(self):
+        self._stop_ts = time.perf_counter()
+        return self
+
+    def update(self, n: int = 1):
+        """
+        Call once per successfully processed/displayed frame.
+        """
+        now = time.perf_counter()
+        for _ in range(n):
+            if self._first_update_ts is None:
+                self._first_update_ts = now
+            if self._last_update_ts is not None:
+                dt = now - self._last_update_ts
+                if dt > 0:
+                    self._times.append(dt)
+            self._last_update_ts = now
+            self._frame_count += 1
+
+    def frames(self) -> int:
+        return self._frame_count
+
+    def elapsed(self) -> float:
+        """
+        Elapsed time between first and last update (not from start()).
+        This avoids huge FPS when no frames were processed.
+        """
+        if self._first_update_ts is None:
+            return 0.0
+        end = self._stop_ts or self._last_update_ts or time.perf_counter()
+        return max(0.0, end - self._first_update_ts)
+
+    def fps(self) -> float:
+        """
+        Instant/rolling FPS based on recent inter-frame deltas.
+        """
+        if not self._times:
+            return self.avg_fps()  # fall back to avg
+        avg_dt = sum(self._times) / len(self._times)
+        return (1.0 / avg_dt) if avg_dt > 0 else 0.0
+
+    def avg_fps(self) -> float:
+        """
+        Global average FPS = total frames / elapsed (first->last update).
+        """
+        elapsed = self.elapsed()
+        return (self._frame_count / elapsed) if elapsed > 0 else 0.0
+
+    # ---- Backward compatibility (keep old calls working) ----
     def get(self) -> float:
-        """Instantaneous FPS (rolling window)."""
-        return float(self._inst_fps)
+        return self.fps()
 
     def get_global(self) -> float:
-        """Global FPS since first update call."""
-        if self.start_time is None:
-            return 0.0
-        now = time.perf_counter()
-        dt = now - self.start_time
-        return (self.nbf / dt) if dt > 0 else 0.0
-
-    def nb_frames(self) -> int:
-        return self.nbf
-
-    def draw(self, win, orig=(10, 30), font=cv2.FONT_HERSHEY_SIMPLEX,
-             size=0.7, color=(0, 255, 0), thickness=2):
-        cv2.putText(win, f"FPS={self.get():.1f}", orig, font, size, color, thickness)
-
-if __name__ == "__main__":
-    fps = FPS()
-    for _ in range(50):
-        fps.update()
-        print(f"inst fps = {fps.get():.2f}  global = {fps.get_global():.2f}")
-        time.sleep(0.02)
-    print(f"Frames: {fps.nb_frames()}")
+        return self.avg_fps()

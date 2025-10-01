@@ -1,21 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_dynamic_libs
-from PyInstaller.utils.hooks import collect_all
-
-datas = []
-binaries = []
-hiddenimports = ['cv2', 'numpy']
-binaries += collect_dynamic_libs('depthai')
-tmp_ret = collect_all('depthai')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['run_hand_tracking.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=[],
+    datas=[('models', 'pyd_models'), ('src/gesture_oak/utils/template_manager_script_solo.py', 'src/gesture_oak/utils')],
+    hiddenimports=['depthai', 'cv2', 'numpy'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
