@@ -1,9 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_dynamic_libs
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('models\\palm_detection_sh4.blob', 'models'), ('models\\hand_landmark_lite_sh4.blob', 'models'), ('models\\PDPostProcessing_top2_sh1.blob', 'models'), ('src\\gesture_oak\\utils\\template_manager_script_solo.py', 'src/gesture_oak/utils')]
+datas = []
 binaries = []
-hiddenimports = []
+hiddenimports = ['cv2', 'numpy']
+binaries += collect_dynamic_libs('depthai')
 tmp_ret = collect_all('depthai')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
