@@ -1,9 +1,25 @@
 # run_hand_tracking.py
 #!/usr/bin/env python3
 from pathlib import Path
-import sys, time, traceback
+import os, sys, time, traceback
 
-ROOT = Path(__file__).resolve().parent
+def _exe_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent
+
+def _msgbox(title: str, text: str) -> None:
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, text, title, 0x00000010)  # MB_ICONERROR
+    except Exception:
+        pass
+
+# --- run from the EXE folder so relative paths work on double-click ---
+os.chdir(_exe_dir())
+
+# Make project importable both frozen and unfrozen
+ROOT = _exe_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -15,18 +31,18 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except Exception:
-        log = (Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT) / "TG25_HandTracking_error.log"
+        log_path = _exe_dir() / "TG25_HandTracking_error.log"
         try:
-            with open(log, "a", encoding="utf-8") as f:
+            with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n==== {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
                 traceback.print_exc(file=f)
         except Exception:
             pass
-        print("\nERROR: Unhandled exception\n")
+        _msgbox(
+            "TG25 Hand Tracking – Error",
+            f"An unexpected error occurred.\n\n"
+            f"A log was written to:\n{log_path}\n"
+        )
         traceback.print_exc()
-        print(f"\nA log was written to: {log}\n")
-        try:
-            input("Press Enter to close...")
-        except Exception:
-            time.sleep(4)
+        time.sleep(0.3)
         raise

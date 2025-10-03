@@ -401,7 +401,7 @@ class HandDetector:
             if in_res is None:
                 return frame, [], depth_frame
 
-            res = marshal.loads(in_res.getData())
+            res = marshal.loads(in_res.getData());
             hands = []
             lm_scores = res.get("lm_score", [])
             for i in range(len(lm_scores)):
