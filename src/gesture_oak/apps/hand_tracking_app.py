@@ -163,18 +163,18 @@ def main():
 
             # Draw overlays
             fps = _safe_fps(detector)
-            cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
+            cv2.putText(frame, f"", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             cv2.putText(frame, f"Hands: {len(hands)}", (10, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            depth_status = "Depth: ON" if depth_frame is not None else "Depth: OFF"
+            depth_status = "" if depth_frame is not None else "Depth: OFF"
             cv2.putText(frame, depth_status, (10, 450), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                         (0, 255, 0) if depth_frame is not None else (0, 0, 255), 2)
 
             if len(hands) == 0:
-                cv2.putText(frame, "IR Mode: Show palm; 80–160 cm",
+                cv2.putText(frame, "",
                             (frame.shape[1] // 2 - 200, frame.shape[0] // 2),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
